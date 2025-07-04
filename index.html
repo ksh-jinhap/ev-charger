@@ -1,0 +1,296 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <title>전기차 충전 예약</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <style>
+    body {
+      background-color: white;
+      color: navy;
+      font-family: sans-serif;
+      padding: 20px;
+      max-width: 500px;
+      margin: auto;
+    }
+
+    h2 {
+      text-align: center;
+      margin-bottom: 20px;
+    }
+
+    label {
+      display: block;
+      margin-top: 10px;
+    }
+
+    input[type="text"],
+    input[type="date"] {
+      width: 100%;
+      padding: 10px;
+      margin-top: 5px;
+      font-size: 16px;
+      box-sizing: border-box;
+    }
+
+    .time-slot {
+      margin: 8px 0;
+    }
+
+    .unavailable {
+      color: gray;
+    }
+
+    button {
+      margin-top: 20px;
+      padding: 12px;
+      background-color: navy;
+      color: white;
+      border: none;
+      width: 100%;
+      font-size: 16px;
+      cursor: pointer;
+      border-radius: 5px;
+    }
+
+    button:hover {
+      opacity: 0.9;
+    }
+
+    #confirmation {
+      margin-top: 15px;
+      font-weight: bold;
+      text-align: center;
+    }
+
+    #adminPanel {
+      margin-top: 30px;
+      display: none;
+      border-top: 1px solid #ccc;
+      padding-top: 20px;
+    }
+
+    .admin-entry {
+      margin-bottom: 10px;
+      font-size: 14px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    .admin-entry span {
+      flex: 1;
+    }
+
+    .admin-heading {
+      text-align: center;
+      font-weight: bold;
+      margin-bottom: 10px;
+      font-size: 16px;
+    }
+
+    .delete-btn {
+      background-color: darkred;
+      color: white;
+      border: none;
+      padding: 4px 8px;
+      cursor: pointer;
+      font-size: 12px;
+      border-radius: 4px;
+      margin-left: 10px;
+    }
+
+    .delete-btn:hover {
+      opacity: 0.8;
+    }
+  </style>
+</head>
+<body>
+  <h2>전기차 충전 예약</h2>
+
+  <label for="dept">부서:</label>
+  <input type="text" id="dept" placeholder="예: 경영지원본부" required>
+
+  <label for="name">이름:</label>
+  <input type="text" id="name" placeholder="예: 홍길동" required>
+
+  <label for="date">예약 날짜 선택:</label>
+  <input type="date" id="date" min="2025-07-01" max="2025-12-31" required>
+
+  <div id="timeSlots" style="margin-top:15px;"></div>
+
+  <button id="reserveBtn" style="display:none;">예약하기</button>
+  <div id="confirmation"></div>
+
+  <button id="adminModeBtn">관리자 모드</button>
+  <div id="adminPanel">
+    <div class="admin-heading">예약 현황</div>
+    <div id="adminContent"></div>
+  </div>
+
+  <script>
+    const bookedSlots = {};
+
+    const timeOptions = [
+      "08:00~10:00",
+      "10:00~12:00",
+      "13:00~15:00",
+      "15:00~17:00"
+    ];
+
+    function getFormattedTime() {
+      const now = new Date();
+      const yyyy = now.getFullYear();
+      const mm = String(now.getMonth() + 1).padStart(2, '0');
+      const dd = String(now.getDate()).padStart(2, '0');
+      const hh = String(now.getHours()).padStart(2, '0');
+      const mi = String(now.getMinutes()).padStart(2, '0');
+      return `${yyyy}-${mm}-${dd} ${hh}:${mi}`;
+    }
+
+    function saveToLocalStorage() {
+      localStorage.setItem("bookedSlots", JSON.stringify(bookedSlots));
+    }
+
+    function loadFromLocalStorage() {
+      const data = localStorage.getItem("bookedSlots");
+      if (data) {
+        Object.assign(bookedSlots, JSON.parse(data));
+      }
+    }
+
+    loadFromLocalStorage();
+
+    const dateInput = document.getElementById("date");
+    const timeContainer = document.getElementById("timeSlots");
+    const reserveBtn = document.getElementById("reserveBtn");
+    const confirmation = document.getElementById("confirmation");
+    const adminBtn = document.getElementById("adminModeBtn");
+    const adminPanel = document.getElementById("adminPanel");
+    const adminContent = document.getElementById("adminContent");
+
+    dateInput.addEventListener("change", function () {
+      const selectedDate = this.value;
+      timeContainer.innerHTML = "";
+      confirmation.innerText = "";
+      reserveBtn.style.display = "none";
+
+      if (!selectedDate) return;
+
+      const reserved = (bookedSlots[selectedDate] || []).map(r => r.time);
+
+      timeOptions.forEach(time => {
+        const isReserved = reserved.includes(time);
+        const div = document.createElement("div");
+        div.classList.add("time-slot");
+
+        if (isReserved) {
+          div.innerHTML = `<label class="unavailable">${time} - [예약불가]</label>`;
+        } else {
+          div.innerHTML = `
+            <label>
+              <input type="radio" name="timeSlot" value="${time}">
+              ${time}
+            </label>
+          `;
+        }
+
+        timeContainer.appendChild(div);
+      });
+
+      reserveBtn.style.display = "block";
+    });
+
+    reserveBtn.addEventListener("click", function () {
+      const selectedDate = dateInput.value;
+      const selectedTime = document.querySelector('input[name="timeSlot"]:checked');
+      const dept = document.getElementById("dept").value.trim();
+      const name = document.getElementById("name").value.trim();
+
+      if (!selectedDate || !selectedTime || !dept || !name) {
+        alert("모든 항목을 입력하고 시간대를 선택해 주세요.");
+        return;
+      }
+
+      const existing = bookedSlots[selectedDate] || [];
+      const duplicate = existing.some(r => r.time === selectedTime.value);
+
+      if (duplicate) {
+        confirmation.innerText = `⚠️ 이미 예약된 시간대입니다. 다시 선택해 주세요.`;
+        confirmation.style.color = "red";
+        return;
+      }
+
+      if (!bookedSlots[selectedDate]) {
+        bookedSlots[selectedDate] = [];
+      }
+      bookedSlots[selectedDate].push({
+        dept,
+        name,
+        time: selectedTime.value,
+        registeredAt: getFormattedTime()
+      });
+
+      saveToLocalStorage();
+
+      alert("예약 완료되었습니다");
+      confirmation.innerText = "";
+      document.getElementById("date").dispatchEvent(new Event("change"));
+    });
+
+    adminBtn.addEventListener("click", function () {
+      const pw = prompt("관리자 비밀번호를 입력하세요:");
+      if (pw === "jinhap123") {
+        renderAdminPanel();
+        adminPanel.style.display = "block";
+      } else {
+        alert("비밀번호가 올바르지 않습니다.");
+      }
+    });
+
+    function renderAdminPanel() {
+      adminContent.innerHTML = "";
+
+      const dates = Object.keys(bookedSlots).sort();
+
+      if (dates.length === 0) {
+        adminContent.innerHTML = "<p>예약된 내역이 없습니다.</p>";
+        return;
+      }
+
+      dates.forEach(date => {
+        const entries = bookedSlots[date];
+        const section = document.createElement("div");
+        section.innerHTML = `<strong>${date}</strong>`;
+
+        entries.forEach((e, index) => {
+          const line = document.createElement("div");
+          line.classList.add("admin-entry");
+
+          const info = document.createElement("span");
+          info.innerText = `📌 ${e.time} - ${e.dept} / ${e.name} (등록: ${e.registeredAt})`;
+
+          const delBtn = document.createElement("button");
+          delBtn.innerText = "삭제";
+          delBtn.classList.add("delete-btn");
+          delBtn.onclick = () => {
+            bookedSlots[date].splice(index, 1);
+            if (bookedSlots[date].length === 0) {
+              delete bookedSlots[date];
+            }
+            saveToLocalStorage();
+            renderAdminPanel();
+          };
+
+          line.appendChild(info);
+          line.appendChild(delBtn);
+          section.appendChild(line);
+        });
+
+        adminContent.appendChild(section);
+        adminContent.appendChild(document.createElement("hr"));
+      });
+    }
+  </script>
+</body>
+</html>
