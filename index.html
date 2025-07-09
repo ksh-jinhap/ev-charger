@@ -1,0 +1,175 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>전기차 충전 예약</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      background-color: white;
+      color: navy;
+      padding: 20px;
+    }
+    .container {
+      max-width: 400px;
+      margin: auto;
+    }
+    label, input {
+      display: block;
+      width: 100%;
+      margin-top: 10px;
+      font-size: 16px;
+    }
+    .slots {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      margin-top: 10px;
+    }
+    .slot-btn {
+      flex: 1 1 45%;
+      padding: 10px;
+      background-color: navy;
+      color: white;
+      border: none;
+      border-radius: 5px;
+      text-align: center;
+      cursor: pointer;
+    }
+    .slot-btn.disabled {
+      background-color: lightgray;
+      color: darkgray;
+      cursor: not-allowed;
+    }
+    .slot-btn.selected {
+      border: 2px solid #004080;
+      background-color: #004080;
+    }
+    button {
+      margin-top: 20px;
+      width: 100%;
+      padding: 12px;
+      background-color: navy;
+      color: white;
+      border: none;
+      border-radius: 5px;
+      font-size: 16px;
+    }
+    #message {
+      margin-top: 15px;
+      font-weight: bold;
+      text-align: center;
+    }
+    #timeSection {
+      display: none;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h2>전기차 충전 예약</h2>
+
+    <label for="user">이름</label>
+    <input type="text" id="user" placeholder="이름을 입력하세요" required>
+
+    <label for="dept">부서</label>
+    <input type="text" id="dept" placeholder="부서를 입력하세요" required>
+
+    <label for="date">날짜 선택</label>
+    <input type="date" id="date" required>
+
+    <div id="timeSection">
+      <div style="margin-top:10px;"><strong>시간 선택</strong></div>
+      <div class="slots" id="slotButtons"></div>
+    </div>
+
+    <button onclick="submitReservation()">예약하기</button>
+    <div id="message"></div>
+  </div>
+
+  <script>
+    const scriptURL = "https://script.google.com/macros/s/AKfycbzr2e1qzvAznQacFtqsWa_IgzUasu02d_xJoU6c9Q9RI95LMlABM5pm_JnDqLoEdgLn/exec";
+    const slotOptions = [
+      "08:00~10:00",
+      "10:00~12:00",
+      "13:00~15:00",
+      "15:00~17:00"
+    ];
+    let selectedSlot = "";
+
+    document.getElementById('date').addEventListener('change', async function () {
+      const date = this.value;
+      const container = document.getElementById('slotButtons');
+      const timeSection = document.getElementById('timeSection');
+      container.innerHTML = '';
+      selectedSlot = "";
+
+      if (!date) {
+        timeSection.style.display = "none";
+        return;
+      }
+
+      try {
+        const response = await fetch(`${scriptURL}?action=check&date=${date}`);
+        const bookedSlots = await response.json();
+
+        slotOptions.forEach(time => {
+          const btn = document.createElement('button');
+          btn.innerText = bookedSlots.includes(time) ? `${time} [예약불가]` : time;
+          btn.className = "slot-btn" + (bookedSlots.includes(time) ? " disabled" : "");
+          btn.disabled = bookedSlots.includes(time);
+
+          if (!bookedSlots.includes(time)) {
+            btn.addEventListener('click', () => {
+              document.querySelectorAll('.slot-btn').forEach(b => b.classList.remove('selected'));
+              btn.classList.add('selected');
+              selectedSlot = time;
+            });
+          }
+
+          container.appendChild(btn);
+        });
+
+        timeSection.style.display = "block";
+      } catch (error) {
+        console.error("시간 정보 오류:", error);
+        document.getElementById('message').innerText = "시간 정보를 불러올 수 없습니다.";
+        timeSection.style.display = "none";
+      }
+    });
+
+    async function submitReservation() {
+      const user = document.getElementById('user').value.trim();
+      const dept = document.getElementById('dept').value.trim();
+      const date = document.getElementById('date').value;
+      const message = document.getElementById('message');
+
+      if (!user || !dept || !date || !selectedSlot) {
+        message.innerText = "모든 항목을 입력하고 시간도 선택해주세요.";
+        return;
+      }
+
+      try {
+        const formData = new FormData();
+        formData.append("action", "reserve");
+        formData.append("user", user);
+        formData.append("dept", dept);
+        formData.append("date", date);
+        formData.append("slot", selectedSlot);
+
+        const res = await fetch(scriptURL, {
+          method: "POST",
+          body: formData
+        });
+
+        const result = await res.text();
+        message.innerText = result;
+      } catch (error) {
+        console.error("예약 오류:", error);
+        message.innerText = "예약 처리 중 오류가 발생했습니다.";
+      }
+    }
+  </script>
+</body>
+</html>
